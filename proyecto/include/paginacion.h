@@ -26,6 +26,7 @@
 typedef struct {
     uint64_t frame_number;  // Frame físico donde está la página
     int valid;              // 1 = en memoria, 0 = no (page fault si se accede)
+    int dirty;              // 1 = página modificada (escritura), 0 = limpia
 } page_table_entry;
 
 typedef struct {
@@ -97,12 +98,30 @@ frame_allocator* init_frame_allocator(int total_frames);
 void free_frame_allocator(frame_allocator *fa);
 
 // allocate_frame: obtiene un frame libre.
-//   Si no hay frames libres, retorna -1 y llena victim_thread/victim_vpn
-//   con la información de la página a evictar (FIFO).
+//   Si no hay frames libres, evicta la página más antigua (FIFO).
+//   La invalidación de la víctima ocurre DENTRO del lock para evitar
+//   race conditions donde otro thread lea entradas stale.
+//   Retorna el frame asignado y llena victim_thread/victim_vpn.
+//   was_dirty_eviction: [out] 1 si la víctima era dirty (necesitó writeback)
 int allocate_frame(frame_allocator *fa, int thread_id, uint64_t vpn,
-                   int *victim_thread, uint64_t *victim_vpn, int use_lock);
+                   int *victim_thread, uint64_t *victim_vpn,
+                   int *was_dirty_eviction,
+                   page_table **all_pts, tlb **all_tlbs, int num_threads,
+                   int use_lock);
 
 // register_page: registra una página en la cola FIFO después de cargarla
 void register_page_in_fifo(frame_allocator *fa, int frame, int thread_id, uint64_t vpn);
+
+// Firma extendida de traducir_pagina con soporte dirty bit
+uint64_t traducir_pagina(uint64_t vpn, uint64_t offset,
+                         page_table *pt, tlb *mi_tlb,
+                         frame_allocator *fa,
+                         int thread_id,
+                         page_table **all_pts, tlb **all_tlbs,
+                         int num_threads,
+                         int page_size, int use_lock,
+                         int is_write,
+                         int *was_tlb_hit, int *was_page_fault,
+                         int *was_eviction, int *was_dirty_eviction);
 
 #endif

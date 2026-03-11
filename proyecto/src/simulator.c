@@ -19,6 +19,7 @@ uint64_t global_tlb_hits = 0;
 uint64_t global_tlb_misses = 0;
 uint64_t global_page_faults = 0;
 uint64_t global_evictions = 0;
+uint64_t global_dirty_evictions = 0;
 pthread_mutex_t lock_metricas = PTHREAD_MUTEX_INITIALIZER;
 
 extern v_addr_seg generate_address_seg(sim_config *conf, segment_table *tabla, unsigned int *seed_local);
@@ -32,8 +33,9 @@ extern uint64_t traducir_pagina(uint64_t vpn, uint64_t offset,
                                 page_table **all_pts, tlb **all_tlbs,
                                 int num_threads,
                                 int page_size, int use_lock,
+                                int is_write,
                                 int *was_tlb_hit, int *was_page_fault,
-                                int *was_eviction);
+                                int *was_eviction, int *was_dirty_eviction);
 
 // =====================================================================
 // Argumentos extra para el thread de paginación
@@ -132,8 +134,11 @@ void* run_paginacion_thread(void* arg) {
         int vpn = generate_vpn_page(conf, &seed_local);
         uint64_t offset = rand_r(&seed_local) % conf->page_size;
 
+        // Determinar si es escritura (~30% de las operaciones son writes)
+        int is_write = (rand_r(&seed_local) % 100) < 30;
+
         // Traducir
-        int was_tlb_hit, was_page_fault, was_eviction;
+        int was_tlb_hit, was_page_fault, was_eviction, was_dirty_eviction;
         uint64_t pa = traducir_pagina(
             (uint64_t)vpn, offset,
             p_args->pt, p_args->mi_tlb,
@@ -143,7 +148,9 @@ void* run_paginacion_thread(void* arg) {
             p_args->num_threads,
             conf->page_size,
             !conf->unsafe,    // use_lock = 1 en modo SAFE
-            &was_tlb_hit, &was_page_fault, &was_eviction
+            is_write,
+            &was_tlb_hit, &was_page_fault, &was_eviction,
+            &was_dirty_eviction
         );
         (void)pa;  // No usamos la dirección física, solo la calculamos
 
@@ -160,6 +167,7 @@ void* run_paginacion_thread(void* arg) {
         }
         if (was_page_fault) t_args->local_page_faults++;
         if (was_eviction) t_args->local_evictions++;
+        if (was_dirty_eviction) t_args->local_dirty_evictions++;
         t_args->local_translations_ok++;
     }
 
@@ -169,6 +177,7 @@ void* run_paginacion_thread(void* arg) {
     global_tlb_misses += t_args->local_tlb_misses;
     global_page_faults += t_args->local_page_faults;
     global_evictions += t_args->local_evictions;
+    global_dirty_evictions += t_args->local_dirty_evictions;
     global_translations_ok += t_args->local_translations_ok;
     if (!conf->unsafe) pthread_mutex_unlock(&lock_metricas);
 
@@ -514,6 +523,7 @@ int main(int argc, char *argv[]) {
             p_args[i].base.local_tlb_misses = 0;
             p_args[i].base.local_page_faults = 0;
             p_args[i].base.local_evictions = 0;
+            p_args[i].base.local_dirty_evictions = 0;
             p_args[i].base.local_total_translation_time_ns = 0;
             p_args[i].pt = all_pts[i];
             p_args[i].mi_tlb = all_tlbs[i];
@@ -577,16 +587,18 @@ int main(int argc, char *argv[]) {
             printf("  hit_rate: %.3f\n", hit_rate);
             printf("  page_faults: %lu\n", global_page_faults);
             printf("  evictions: %lu\n", global_evictions);
+            printf("  dirty_evictions: %lu\n", global_dirty_evictions);
             printf("  avg_translation_time_ns: %.2f\n", avg_translation_ns);
             printf("  throughput_ops_sec: %.2f\n", throughput);
             printf("\nMétricas por Thread:\n");
             for (int i = 0; i < config.threads; i++) {
-                printf("  Thread %d: tlb_hits=%lu, tlb_misses=%lu, page_faults=%lu, evictions=%lu\n",
+                printf("  Thread %d: tlb_hits=%lu, tlb_misses=%lu, page_faults=%lu, evictions=%lu, dirty_evictions=%lu\n",
                        i,
                        p_args[i].base.local_tlb_hits,
                        p_args[i].base.local_tlb_misses,
                        p_args[i].base.local_page_faults,
-                       p_args[i].base.local_evictions);
+                       p_args[i].base.local_evictions,
+                       p_args[i].base.local_dirty_evictions);
             }
             printf("\nTiempo total: %.2f segundos\n", elapsed_sec);
             printf("Throughput: %.2f ops/seg\n", throughput);
@@ -618,6 +630,7 @@ int main(int argc, char *argv[]) {
             fprintf(fp, "    \"hit_rate\": %.3f,\n", hit_rate);
             fprintf(fp, "    \"page_faults\": %lu,\n", global_page_faults);
             fprintf(fp, "    \"evictions\": %lu,\n", global_evictions);
+            fprintf(fp, "    \"dirty_evictions\": %lu,\n", global_dirty_evictions);
             fprintf(fp, "    \"avg_translation_time_ns\": %.2f,\n", avg_translation_ns);
             fprintf(fp, "    \"throughput_ops_sec\": %.2f\n", throughput);
             fprintf(fp, "  },\n");

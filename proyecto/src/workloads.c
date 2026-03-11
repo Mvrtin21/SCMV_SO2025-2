@@ -44,19 +44,21 @@ v_addr_seg generate_address_seg(sim_config *conf, segment_table *tabla, unsigned
     }
 
     if (strcmp(conf->workload, "80-20") == 0) {
-        // --- Workload 80-20: simula localidad temporal ---
-        // 80% del tiempo accedemos al primer 20% de segmentos
+        // --- Workload 80-20: simula ley de Pareto ---
+        // 80% del tiempo accedemos al 20% de segmentos con MAYOR límite.
+        // Esto modela que los segmentos más usados son los más grandes,
+        // lo que reduce los segfaults respecto a uniform.
         int hot_count = num_seg / 5;             // 20% de los segmentos
         if (hot_count < 1) hot_count = 1;        // Al menos 1 segmento "caliente"
 
         int r = rand_r(seed_local) % 100;        // Número del 0 al 99
         if (r < 80) {
-            // 80% → elegir de los segmentos "calientes" (primeros 20%)
-            addr.seg_id = rand_r(seed_local) % hot_count;
+            // 80% → elegir de los segmentos "calientes" (últimos 20%, los más grandes)
+            addr.seg_id = (num_seg - hot_count) + rand_r(seed_local) % hot_count;
         } else {
-            // 20% → elegir del resto de segmentos
+            // 20% → elegir del resto de segmentos (los más pequeños)
             if (num_seg - hot_count > 0) {
-                addr.seg_id = hot_count + rand_r(seed_local) % (num_seg - hot_count);
+                addr.seg_id = rand_r(seed_local) % (num_seg - hot_count);
             } else {
                 addr.seg_id = 0;
             }

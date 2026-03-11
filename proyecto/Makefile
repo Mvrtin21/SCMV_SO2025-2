@@ -58,6 +58,28 @@ reproduce: $(TARGET)
 
 clean:
 	rm -f $(TARGET)
+	rm -f test_seg test_pag test_conc
 	rm -rf out/
 
-.PHONY: all run reproduce clean
+# --- Tests unitarios ---
+test_seg: tests/test_segmentacion.c src/segmentacion.c src/workloads.c
+	$(CC) $(CFLAGS) -o $@ $^ -lm
+
+test_pag: tests/test_paginacion.c src/paginacion.c src/tlb.c src/frame_allocator.c src/workloads.c src/segmentacion.c
+	$(CC) $(CFLAGS) -o $@ $^ -lm
+
+test_conc: tests/test_concurrencia.c src/paginacion.c src/tlb.c src/frame_allocator.c src/workloads.c src/segmentacion.c
+	$(CC) $(CFLAGS) -o $@ $^ -lm
+
+test: test_seg test_pag test_conc
+	@echo ""
+	@echo "=== Test Segmentación ==="
+	./test_seg
+	@echo ""
+	@echo "=== Test Paginación ==="
+	./test_pag
+	@echo ""
+	@echo "=== Test Concurrencia ==="
+	./test_conc
+
+.PHONY: all run reproduce clean test

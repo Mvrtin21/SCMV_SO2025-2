@@ -60,20 +60,26 @@ void free_frame_allocator(frame_allocator *fa) {
 // allocate_frame: Obtiene un frame físico
 //
 // Retorna el número de frame asignado (>= 0).
-// Si hubo eviction, llena victim_thread y victim_vpn con la víctima.
-// Si NO hubo eviction, victim_thread = -1.
+// Si hubo eviction, llena victim_thread y victim_vpn con la víctima,
+// y realiza la invalidación de la tabla de páginas y TLB de la víctima
+// DENTRO del lock para evitar race conditions.
+//
+// Sin el lock, otro thread podría leer entries stale (valid=1) en su
+// tabla de páginas para un frame que ya fue reasignado, causando
+// que NO genere page fault cuando debería.
 //
 // use_lock: 1 en modo SAFE, 0 en modo UNSAFE
 // =====================================================================
 int allocate_frame(frame_allocator *fa, int thread_id, uint64_t vpn,
-                   int *victim_thread, uint64_t *victim_vpn, int use_lock) {
+                   int *victim_thread, uint64_t *victim_vpn,
+                   int *was_dirty_eviction,
+                   page_table **all_pts, tlb **all_tlbs, int num_threads,
+                   int use_lock) {
     if (use_lock) pthread_mutex_lock(&fa->lock);
-
-    // use_lock o lock se refiere a si estamos en modo SAFE o UNSAFE, para decidir 
-    // si usamos el mutex o no.
 
     int frame;
     *victim_thread = -1;
+    *was_dirty_eviction = 0;
 
     if (fa->free_count > 0) {
         // Caso A: Hay frame libre → pop del stack
@@ -89,6 +95,26 @@ int allocate_frame(frame_allocator *fa, int thread_id, uint64_t vpn,
         *victim_thread = victim.thread_id;
         *victim_vpn = victim.vpn;
         frame = victim.frame;  // Reutilizamos su frame
+
+        // ─── Invalidación DENTRO del lock ───
+        // Esto evita que el thread víctima lea valid=1 para un frame
+        // que ya le fue quitado (race condition)
+        if (all_pts != NULL && *victim_thread >= 0 &&
+            *victim_thread < num_threads && all_pts[*victim_thread] != NULL) {
+            // Verificar dirty bit antes de invalidar
+            if (all_pts[*victim_thread]->entries[*victim_vpn].dirty) {
+                *was_dirty_eviction = 1;
+            }
+            // Invalidar tabla de páginas de la víctima
+            all_pts[*victim_thread]->entries[*victim_vpn].valid = 0;
+            all_pts[*victim_thread]->entries[*victim_vpn].frame_number = INVALID_FRAME;
+            all_pts[*victim_thread]->entries[*victim_vpn].dirty = 0;
+        }
+        // Invalidar TLB de la víctima
+        if (all_tlbs != NULL && *victim_thread >= 0 &&
+            *victim_thread < num_threads && all_tlbs[*victim_thread] != NULL) {
+            tlb_invalidate_vpn(all_tlbs[*victim_thread], *victim_vpn);
+        }
     }
 
     // Registrar la nueva página en la cola FIFO

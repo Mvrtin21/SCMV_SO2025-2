@@ -11,8 +11,8 @@
   "metrics": {
     "translations_ok": 4721,
     "segfaults": 5279,
-    "avg_translation_time_ns": 94.19,
-    "throughput_ops_sec": 5983949.85
+    "avg_translation_time_ns": 65.17,
+    "throughput_ops_sec": 8067515.42
   },
-  "runtime_sec": 0.002
+  "runtime_sec": 0.001
 }

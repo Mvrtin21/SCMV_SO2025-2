@@ -43,6 +43,7 @@ extern uint64_t global_tlb_hits;
 extern uint64_t global_tlb_misses;
 extern uint64_t global_page_faults;
 extern uint64_t global_evictions;
+extern uint64_t global_dirty_evictions;
 
 // Mutex global para proteger las métricas compartidas
 extern pthread_mutex_t lock_metricas;
@@ -61,6 +62,7 @@ typedef struct {
     uint64_t local_tlb_misses;
     uint64_t local_page_faults;
     uint64_t local_evictions;
+    uint64_t local_dirty_evictions;
     double local_total_translation_time_ns; // Suma de tiempos de traducción
 } thread_args;
 
