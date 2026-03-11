@@ -1,3 +1,7 @@
+// Autores:
+//   - Martin Araya 21.781.369-7
+//   - Benjamin Letelier 21.329.678-7
+//
 #ifndef SIMULATOR_H
 #define SIMULATOR_H
 #include <stdint.h>  // Necesario para uint64_t

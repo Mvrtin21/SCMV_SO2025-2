@@ -1,3 +1,7 @@
+// Autores:
+//   - Martin Araya 21.781.369-7
+//   - Benjamin Letelier 21.329.678-7
+//
 // Programa principal
 #define _POSIX_C_SOURCE 199309L  // Necesario para clock_gettime y nanosleep
 #include <stdio.h>

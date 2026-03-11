@@ -1,3 +1,7 @@
+// Autores:
+//   - Martin Araya 21.781.369-7
+//   - Benjamin Letelier 21.329.678-7
+//
 // =====================================================================
 // paginacion.h — Definiciones para el modo de paginación
 //
